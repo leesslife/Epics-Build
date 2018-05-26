@@ -1,0 +1,388 @@
+Getting Started with EPICS
+
+Michael Davidsaver
+<mdavidsaver@bnl.gov>
+version 3,February 2013
+Table of Contents
+<p><b>JavaScript must be enabled in your browser to display the table of contents.</b></p>
+1. Introduction
+2. Environment
+3. Getting the Source
+4. Building
+4.1. Base
+4.2. ALH
+4.3. EDM
+5. Testing
+6. SoftIoc
+6.1. sum.db
+6.2. sum-start.cmd
+6.3. Running
+7. PV Access from a Shell
+8. PV Access with EDM
+9. Alarm Handling
+10. Have Fun
+11. References
+1. Introduction
+
+This article describes how to build and run a simple software IOC and the EDM display manager.  The goal is to provide the reader a basic functional system with which to further explore the EPICS control system.
+
+The intended audience is anyone with an interest in setting up a standalone EPICS system for development, testing, or just to try something new.  Some familiarity with a Bourne shell and with building software in a Unix(like) environment is assumed.  No knowledge of programming or the C/C++ languages is assumed as none is required to understand the examples presented here.
+
+2. Environment
+
+The EPICS build system carries some assumptions about the layout of its source code tree. We will be building the EPICS Base package along with several extension packages (EDM and ALM). For the remainder of this document it is assumed that the following directory structure is present under a base directory $HOME/myepics. This name can be replaced with an arbitrary directory. No privileged operations are used.
+
+- myepics
+  - base
+  - extensions
+     - src
+       - alh
+       - edm
+     - etc
+Several environment variables must also be set when building and using EPICS.  They will be set when appropriate in the following sections.
+
+EPICS_BASE
+  $HOME/myepics/base
+
+By convention the location of the EPICS Base tree.
+Used to reference executables, headers, libraries, and other built files.
+EPICS_EXTENSIONS
+  $HOME/myepics/extensions
+
+Home of the various addons to the Base package including EDM.
+Also contains separate build infrastructure with potentially different settings.
+EPICS_HOST_ARCH
+  linux-x86, solaris-sparc-gnu, win32-x86-mingw, etc.
+
+The identifier for the build host.
+Unix users can run the 'EpicsHostArch' script found in '$EPICS_BASE/startup'
+EDMOBJECTS
+  $EPICS_EXTENSIONS/etc
+
+Directory containing edmObjects
+EDMPVOBJECTS
+  $EPICS_EXTENSIONS/etc
+
+Directory containing edmPvObjects
+EDMFILES
+  $EPICS_EXTENSIONS/src/edm/edmMain
+
+Directory containing misc EDM configuration.
+EDMHELPFILES
+  $EPICS_EXTENSIONS/src/edm/helpFiles
+
+Location of EDM online help data.
+EDMLIBS
+  $EPICS_EXTENSIONS/lib/$EPICS_HOST_ARCH
+
+Location of EDM plugin libraries.
+The following are used to ensure that this example remain self-contained even if run on a machine attached to a network with Channel Access traffic. Their meanings are discussed below, and explained fully in theChannel Access Reference Manual [CAref].
+
+EPICS_CAS_INTF_ADDR_LIST
+  localhost
+
+EPICS_CA_ADDR_LIST
+  localhost
+
+EPICS_CA_AUTO_ADDR_LIST
+  NO
+
+3. Getting the Source
+
+The source for most EPICS software can be found at or through theEPICS Home Page. The specific versions used in this document are only examples.
+
+TableEPICS Components
+    Name   	    File   	    Download   
+    Base   	    baseR3.14.12.2.tar.gz   	http://www.aps.anl.gov/epics/base/R3-14/12.php
+    Extensions   	    extensionsTop_20070703.tar.gz   	http://www.aps.anl.gov/epics/extensions/configure/index.php
+    ALH   	    alh1_2_26.tar.gz   	http://www.aps.anl.gov/epics/extensions/alh/index.php
+    EDM   	    edm-1-12-71.tgz   	http://ics-web.sns.ornl.gov/edm/
+Download all the files listed in components table into $HOME/myepics. First unpack Base and Extensions.  Either rename or symlinkbase-3.14.12.2 to base. Create the directoryextensions/etcNow unpack ALH and EDM in theextensions/src directory.
+
+4. Building
+
+4.1. Base
+
+We begin be setting up the environment to build the Base package.
+
+export EPICS_BASE="${HOME}/myepics/base"
+export EPICS_HOST_ARCH=`${EPICS_BASE}/startup/EpicsHostArch`
+export PATH="${PATH}:${EPICS_BASE}/bin/${EPICS_HOST_ARCH}"
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${EPICS_BASE}/lib/${EPICS_HOST_ARCH}"
+Before starting the compile it is worth mentioning that there are several files which contain user options which effect the build process.CONFIG_SITE andRELEASE in $EPICS_BASE/configure. In particularCONFIG_SITE is where the cross-build targets would be specified.
+
+Now simply switch to the base directory and issue the make command.
+
+cd $EPICS_BASE
+make
+More infomation on compiling EPICS Base can be found in base/documentation/README.htmlor online athttp://www.aps.anl.gov/epics/base/R3-14/12-docs/README.html.
+
+4.2. ALH
+
+ALH requires the presence of a Motif installation (OpenMotif or LessTif). Linux users check to see if your distribution provides one or more of these. Also install the development headers (-dev or -devel as appropriate). Others should consult available documentationhttp://www.motifzone.net/. Also see the ALH user guide [ALHman].
+
+Now build the Alarm Handler.
+
+export EPICS_EXTENSIONS="${HOME}/myepics/extensions"
+cd ${EPICS_EXTENSIONS}/src/alh1_2_26
+make
+Include the resulting executable in the system path.
+
+export PATH="${PATH}:${EPICS_EXTENSIONS}/bin/${EPICS_HOST_ARCH}"
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${EPICS_EXTENSIONS}/lib/${EPICS_HOST_ARCH}"
+alh
+ALH will not actually do anything useful without a configuration file. This will be described later.
+
+4.3. EDM
+
+Building the EDM display manager can be complicated. It has many dependencies in addition to Motif including libgif, libpng, and many X11 libraries (X11, Xm, Xau, etc.). These are assumed to be present and the build system does not check that they are. If a compile or link fails look for messages indicating missing headers or libraries and install the appropriate package. More infomation of building EDM can be found in the EDM User Manual[EDMman].
+
+cd ${EPICS_EXTENSIONS}/src/edm
+make
+The GIF plugin needs to link against the ungif library which may not be available. In this case the solution is not to build the gif plugin. A plugin for png images is available.
+
+sed -i -e 's|giflib||g' Makefile
+make
+4.3.1. Generate Plugin Config Files
+
+EDM depends on several configuration files. The two files which list the locations of various plugins must be generated.
+
+The following is a simpleminded way to do this which takes advantage of the fact that EDM can recognize if a library is a valid plugin and which type it is. It will only add valid plugins to the list files.
+
+cd ${EPICS_EXTENSIONS}/lib/${EPICS_HOST_ARCH}
+export EDMOBJECTS=$PWD
+export EDMPVOBJECTS=$PWD
+export EDM=${EPICS_EXTENSIONS}/bin/${EPICS_HOST_ARCH}/edm
+for pv in Epics Calc Log Loc;do $EDM -addpv $PWD/lib$pv.so;done
+for ff in lib*.so;do ${EDM} -add $PWD/$ff; done
+sed -i -e "s|$PWD|"'$(EDMLIBS)|' edmObjects edmPvObjects
+rm edmObjects~ edmPvObjects~
+unset EDMOBJECTS EDMPVOBJECTS EDM
+install -d ${EPICS_EXTENSIONS}/etc
+mv edmObjects edmPvObjects ${EPICS_EXTENSIONS}/etc/
+The additional step of replacing the absolute paths with $(EDMLIBS) is taken to allow the built tree to be relocated without requiring modifications to these files.
+
+4.3.2. Additional Environment
+
+Several more environment variables are required to run EDM.
+
+export EDMOBJECTS=$EPICS_EXTENSIONS/etc
+export EDMPVOBJECTS=$EPICS_EXTENSIONS/etc
+export EDMFILES=$EPICS_EXTENSIONS/src/edm/edmMain
+export EDMHELPFILES=$EPICS_EXTENSIONS/src/edm/helpFiles
+export EDMLIBS=$EPICS_EXTENSIONS/lib/$EPICS_HOST_ARCH
+EDM can now be executed, but it can’t show anything interesting, yet.
+
+edm
+5. Testing
+
+The remainder of this document will be devoted to creating a trivial IOC which will then be used to demonstrate the functionality of EDM and ALH.
+
+It is assumed that this example is being executed on a disconnected system, or at least on a system which sees no EPICS traffic and hosts no IOCs. In the interest of safety the following will prevent clients on the local system from connecting to IOCs on other systems. However, remote clients may connect to local IOCs. Complete isolation requires a firewall set to block TCP and UDP traffic on ports 5064 and 5065.
+
+export EPICS_CA_AUTO_ADDR_LIST=NO
+export EPICS_CA_ADDR_LIST=localhost
+So in summary, the environment constructed for the following examples is:
+
+export EPICS_BASE="${HOME}/myepics/base"
+export EPICS_EXTENSIONS="${HOME}/myepics/extensions"
+export EPICS_HOST_ARCH=`${EPICS_BASE}/startup/EpicsHostArch`
+export PATH="${PATH}:${EPICS_BASE}/bin/${EPICS_HOST_ARCH}"
+export PATH="${PATH}:${EPICS_EXTENSIONS}/bin/${EPICS_HOST_ARCH}"
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${EPICS_BASE}/lib/${EPICS_HOST_ARCH}"
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${EPICS_EXTENSIONS}/lib/${EPICS_HOST_ARCH}"
+export EDMOBJECTS=$EPICS_EXTENSIONS/etc
+export EDMPVOBJECTS=$EPICS_EXTENSIONS/etc
+export EDMFILES=$EPICS_EXTENSIONS/src/edm/edmMain
+export EDMHELPFILES=$EPICS_EXTENSIONS/src/edm/helpFiles
+export EDMLIBS=$EPICS_EXTENSIONS/lib/$EPICS_HOST_ARCH
+export EPICS_CA_AUTO_ADDR_LIST=NO
+export EPICS_CA_ADDR_LIST=localhost
+6. SoftIoc
+
+Now we will construct a IOC which will run on the host machine. This will be done without compiling any additional code through the use of the softIoc executable.
+
+The IOC will have only tree Process Variables (PVs). One will be automatically fill with the sum of the other two. That is if PV A is 1 and PV B is set to 2 then PV SUM will be set to 3.
+
+Create the two short files: sum.db and sum-start.cmd. Then start the IOC in the directory containing them.
+
+mkdir $HOME/myepics/myioc
+cd $HOME/myepics/myioc
+6.1. sum.db
+
+record(ao,"$(INST):a"){
+  field(DTYP,"Soft Channel")
+  field(VAL,0)
+  field(UDF,1)
+  field(FLNK,"$(INST):sum")
+}
+record(ao,"$(INST):b"){
+  field(DTYP,"Soft Channel")
+  field(VAL,0)
+  field(UDF,1)
+  field(FLNK,"$(INST):sum")
+}
+record(calc,"$(INST):sum"){
+  field(INPA,"$(INST):a")
+  field(INPB,"$(INST):b")
+  field(CALC,"A + B")
+}
+This file will be used to create several process variables in the database of the softIoc instance. They consists of two Soft Analog Output records and a Calculated record. The$(INST) will be replaced with an actual prefix string when loaded at runtime.
+
+6.2. sum-start.cmd
+
+epicsEnvSet("ARCH","linux-x86_64")
+epicsEnvSet("IOC","mytestioc")
+dbLoadRecords("sum.db","INST=calc")
+iocInit
+Here we have a start script containing commands to be given to the IOC shell. It simply sets several environment variables, loads the records previously defined, with the given prefix, and starts running.
+
+The same db file could be loaded again with a different prefix.
+
+6.3. Running
+
+Now start the IOC.
+
+softIoc sum-start.cmd
+When running it provides three PVs: calc:a, calc:b, calc:sum.
+
+7. PV Access from a Shell
+
+EPICS Base provides several utilities for reading and modifying Process Variables from command shell.  Herecaget and caput are demonstrated by accessing our softIoc.
+
+$ caget calc:a calc:b calc:sum
+calc:a                         0
+calc:b                         0
+calc:sum                       0
+$ caput calc:a 2
+Old : calc:a                         0
+New : calc:a                         2
+$ caget calc:a calc:b calc:sum
+calc:a                         2
+calc:b                         0
+calc:sum                       2
+$ caput calc:b 3
+Old : calc:b                         0
+New : calc:b                         3
+$ caget calc:a calc:b calc:sum
+calc:a                         2
+calc:b                         3
+calc:sum                       5
+8. PV Access with EDM
+
+First we will revisit the record specification file sum.db and add several fields. Some of these additional fields are used by EDM to determine how records should be displayed.  Others are used by the IOC for alarming.
+
+record(ao,"$(INST):a"){
+  field(DESC,"Input A")
+  field(DTYP,"Soft Channel")
+  field(PREC,1)
+  field(DRVH,10)
+  field(HOPR,10)
+  field(VAL,0)
+  field(LOPR,-10)
+  field(DRVL,-10)
+  field(UDF,1)
+  field(FLNK,"$(INST):sum")
+}
+record(ao,"$(INST):b"){
+  field(DESC,"Input B")
+  field(DTYP,"Soft Channel")
+  field(PREC,1)
+  field(DRVH,10)
+  field(HOPR,10)
+  field(VAL,0)
+  field(LOPR,-10)
+  field(DRVL,-10)
+  field(UDF,1)
+  field(FLNK,"$(INST):sum")
+}
+record(calc,"$(INST):sum"){
+  field(DESC,"Sum")
+  field(PREC,1)
+  field(INPA,"$(INST):a")
+  field(INPB,"$(INST):b")
+  field(CALC,"A + B")
+  field(HOPR,20)
+  field(HIHI,18)
+  field(HIGH,15)
+  field(LOW,-15)
+  field(LOLO,-18)
+  field(LOPR,-20)
+  field(HHSV,"MAJOR")
+  field(HSV,"MINOR")
+  field(LSV,"MINOR")
+  field(LLSV,"MAJOR")
+}
+Run EDM.  First place three Text Control s. In each one set the PV to one of the three PVs from our IOC. Also setNull Condition to Disabled and checkEditable,Keypad,Alarm Sensitive, and Alarm Border.
+
+Execute the display and try setting the three fields. Try setting A and B so that the sum exceeds 15. Also try using slider controls for A and B.
+
+9. Alarm Handling
+
+Consider the following ALH configuration file sum.alhConfig.
+
+GROUP NULL SUM
+
+CHANNEL SUM calc:a
+CHANNEL SUM calc:b
+CHANNEL SUM calc:sum
+Run ALH.
+
+alh sum.alhConfig
+Now cause an alarm by making the sum exceed 15.
+
+10. Have Fun
+
+For more information of record types see the Record Reference Manualin the EPICS wikihttp://www.aps.anl.gov/epics/wiki/index.php/RRM_3-14. Infomation on writing more functionality for IOCs can be found in the Developer’s guide[AppDev].
+
+11. References
+
+[CAref] Jeffrey O. Hill & Ralph Lange. Channel Access Reference Manual.http://www.aps.anl.gov/epics/base/R3-14/12-docs/CAref.html
+
+[AppDev] Marty Kraimer et al.  'EPICS Application Developer’s Guide '.http://www.aps.anl.gov/epics/base/R3-14/12-docs/AppDevGuide.pdf
+
+[EpicsRTEMS] W. Eric Norum. Getting started with EPICS on RTEMS.http://www.aps.anl.gov/epics/base/RTEMS/tutorial/
+
+[EDMman] John  Sinclair. Extensible Display Manager. http://ics-web.sns.ornl.gov/edm/edmUserManual/index.html
+
+[ALHman] Janet Anderson. Alarm Handler User’s Guidehttp://www.aps.anl.gov/epics/EpicsDocumentation/ExtensionsManuals/AlarmHandler/alhUserGuide-1.2.26/ALHUserGuide.html
+
+---------------------------------------------------------------------------------
+
+上面的例子的运行方法：
+
+（1）导出环境变量：
+
+export EPICS_BASE="${HOME}/myepics/base"
+
+export EPICS_EXTENSIONS="${HOME}/myepics/extensions"
+
+export EPICS_HOST_ARCH=`${EPICS_BASE}/startup/EpicsHostArch`
+
+export PATH="${PATH}:${EPICS_BASE}/bin/${EPICS_HOST_ARCH}"
+
+export PATH="${PATH}:${EPICS_EXTENSIONS}/bin/${EPICS_HOST_ARCH}"
+
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${EPICS_BASE}/lib/${EPICS_HOST_ARCH}"
+
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${EPICS_EXTENSIONS}/lib/${EPICS_HOST_ARCH}"
+
+export EDMOBJECTS=$EPICS_EXTENSIONS/etc
+
+export EDMPVOBJECTS=$EPICS_EXTENSIONS/etc
+
+export EDMFILES=$EPICS_EXTENSIONS/src/edm/edmMain
+
+export EDMHELPFILES=$EPICS_EXTENSIONS/src/edm/helpFiles
+
+export EDMLIBS=$EPICS_EXTENSIONS/lib/$EPICS_HOST_ARCH
+
+export EPICS_CA_AUTO_ADDR_LIST=NO
+
+export EPICS_CA_ADDR_LIST=localhost
+
+（2）caget calc:a（不先启动下client的话，第三步会出错）
+
+（3）softIoc sum-start.cmd
+
+（4）其他 caget
